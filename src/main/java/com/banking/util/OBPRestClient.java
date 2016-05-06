@@ -198,6 +198,7 @@ import java.text.DateFormat;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
+import java.util.Map;
 import java.util.TimeZone;
 
 import oauth.signpost.OAuthConsumer;
@@ -220,6 +221,11 @@ import org.apache.http.util.EntityUtils;
 import org.codehaus.jackson.JsonParseException;
 import org.codehaus.jackson.map.JsonMappingException;
 import org.codehaus.jackson.map.ObjectMapper;
+import org.eclipse.jetty.util.StringUtil;
+
+import com.banking.comparator.Constants;
+import com.banking.request.LoginRequest;
+import com.banking.util.thread.ThreadLocalContainer;
 
 public class OBPRestClient {
 
@@ -235,21 +241,14 @@ public class OBPRestClient {
 	 */
 	private static final String OBP_AUTH_KEY = "js5e4d1zkgwhib13zwknyynunlmxq3avghvukaaf";
 	private static final String OBP_SECRET_KEY = "zjldsrx1o1mvbier22e4lk3om40smo2hm2anxwcj";
+	private static String LOGIN_URL;
 
-	private static final String BASE_URL = "https://apisandbox.openbankproject.com/obp/v2.0.0";
-	private static final String BASE_URL_TOKEN = "https://apisandbox.openbankproject.com";
+	private static String API_URL;
 
 	private static final String REQUEST_TOKEN_URL = calcFullPath("/oauth/initiate");
 	private static final String ACCESS_TOKEN_URL = calcFullPath("/oauth/token");
 	private static final String AUTHORIZE_WEBSITE_URL = calcFullPath("/oauth/authorize");
 
-	private static final String PREF_FILE = "OBP_API_PREFS";
-	private static final String CONSUMER_TOKEN = "CONSUMER_TOKEN";
-	private static final String CONSUMER_SECRET = "CONSUMER_SECRET";
-	private static final String PREF_NOT_SET = "";
-
-	private static final String LOG_TAG = OBPRestClient.class.getClass()
-			.getName();
 
 	private static OAuthConsumer consumer = new CommonsHttpOAuthConsumer(
 			OBP_AUTH_KEY, OBP_SECRET_KEY);
@@ -258,7 +257,7 @@ public class OBPRestClient {
 			REQUEST_TOKEN_URL, ACCESS_TOKEN_URL, AUTHORIZE_WEBSITE_URL);
 
 	private static String calcFullPath(String relativePath) {
-		return BASE_URL_TOKEN + relativePath;
+		return API_URL + relativePath;
 	}
 
 	static String customProtocol = "combankingutil";
@@ -331,22 +330,26 @@ public class OBPRestClient {
 		return responseJson;
 	}
 
-	private static String username = "tusharbhendarkar@gmail.com";
-	private static String password = "May2013$";
 	private static String DIRECT_LOGIN_URI = "/my/logins/direct";
 
-	public static String getDirectAccessToken() throws JsonParseException,
-			JsonMappingException, IOException {
+	public static String getDirectAccessToken(LoginRequest loginRequest)
+			throws JsonParseException, JsonMappingException, IOException {
+		
+		Map<String, String> map = new Constants().getMap();
+		String appId = (String) ThreadLocalContainer.getObject("app_id");
+		String LOGIN_URL = map.get(appId + "_BASE_URL_TOKEN");
+		String CONSUMER_KEY = map.get(appId + "_CONSUMER_KEY");
+		
 		String responseJson = null;
 		try {
-
 			HttpClient httpclient = new DefaultHttpClient();
-			HttpGet request = new HttpGet(BASE_URL_TOKEN+DIRECT_LOGIN_URI);
+			HttpGet request = new HttpGet(LOGIN_URL + DIRECT_LOGIN_URI);
 			request.setHeader("Content-Type", "application/json");
 			request.setHeader("Authorization", "DirectLogin username=\""
-					+ username + "\",                 " + "password=\""
-					+ password + "\",               " + " consumer_key=\""
-					+ OBP_AUTH_KEY + "\"");
+					+ loginRequest.getUserName() + "\",                 "
+					+ "password=\"" + loginRequest.getPassword()
+					+ "\",               " + " consumer_key=\"" + CONSUMER_KEY
+					+ "\"");
 
 			org.apache.http.HttpResponse response = httpclient.execute(request);
 			HttpEntity entity = response.getEntity();
@@ -373,40 +376,28 @@ public class OBPRestClient {
 		if (null == responseJson)
 			return null;
 		ObjectMapper mapper = new ObjectMapper();
-		Token token = mapper.readValue(responseJson, Token.class);
-		return token.getToken();
+		Token access_token = mapper.readValue(responseJson, Token.class);
+		if (null != access_token && StringUtil.isNotBlank(access_token.getToken())) {
+			ThreadLocalContainer.setObject("ACCESS_TOKEN", access_token.getToken());
+		}
+		ThreadLocalContainer.getObject("ACCESS_TOKEN");
+		return access_token.getToken();
 
 	}
 
 	public static String getOAuthedJson(String urlString) {
+		Map<String, String> map = new Constants().getMap();
+		String appId = (String) ThreadLocalContainer.getObject("app_id");
+		String token = (String) ThreadLocalContainer.getObject("ACCESS_TOKEN");
+		
 		String responseJson = null;
 		try {
-
 			HttpClient httpclient = new DefaultHttpClient();
 			HttpGet request = new HttpGet(urlString);
 			request.setHeader("Content-Type", "application/json");
-			request.setHeader("Authorization", "DirectLogin token=\""+getDirectAccessToken()+"\"");
+			request.setHeader("Authorization", "DirectLogin token=\""
+					+ token);
 
-			// consumer.sign(request);
-			// request.setHeader(CONSUMER_TOKEN, OBP_AUTH_KEY);
-			// request.setHeader(CONSUMER_SECRET, OBP_SECRET_KEY);
-			// getAuthoriseAppUrl();
-			// getAndSetAccessToken(null);
-			// String accessToken=provider.retrieveRequestToken(consumer,
-			// consumer.getToken(),consumer.getTokenSecret());
-			// request.setHeader("Authorization", "Bearer "+accessToken);
-
-			// initiateJson("", "");
-			// String accessTokenURL= getAuthoriseAppUrl();
-			// request=new HttpGet(accessTokenURL);
-			// consumer.sign(request);
-			// String
-			// authorizationResponse=getOAuthedJsonResponse(accessTokenURL);
-			// Map<String,String>mapHeaders=provider.getRequestHeaders();
-			/*
-			 * String resp=getOAuthedJsonResponse(customProtocol + "://oauth");
-			 */
-			// consumer.sign(request);
 			org.apache.http.HttpResponse response = httpclient.execute(request);
 			HttpEntity entity = response.getEntity();
 
@@ -432,12 +423,18 @@ public class OBPRestClient {
 	}
 
 	public static String postOAuthedJson(String urlString, String object) {
+		
+		Map<String, String> map = new Constants().getMap();
+		String token = (String) ThreadLocalContainer.getObject("ACCESS_TOKEN");
+		
 		String responseJson = null;
 		try {
 			HttpClient httpclient = new DefaultHttpClient();
 			HttpPost request = new HttpPost(urlString);
 			request.setHeader("Content-Type", "application/json");
-			request.setHeader("Authorization", "DirectLogin token=\""+getDirectAccessToken()+"\"");
+			request.setHeader("Authorization", "DirectLogin token=\""
+					+ token
+					+ "\"");
 
 			HttpEntity requestEntity = new ByteArrayEntity(
 					object.getBytes("UTF-8"));
@@ -463,7 +460,6 @@ public class OBPRestClient {
 
 			}
 		} catch (Exception e) {
-			// TODO: handle exception
 			e.printStackTrace();
 		}
 		return responseJson;
@@ -486,11 +482,17 @@ public class OBPRestClient {
 	 * @throws ObpApiCallFailedException
 	 */
 	public static String getBanksJson(String uri) {
-		return getOAuthedJson(BASE_URL + uri);
+		Map<String, String> map = new Constants().getMap();
+		String appId = (String) ThreadLocalContainer.getObject("app_id");
+		String API_URL = map.get(appId + "_BASE_URL_API_URL");
+		return getOAuthedJson(API_URL + uri);
 	}
 
 	public static String postBanksJson(String uri, String object) {
-		return postOAuthedJson(BASE_URL + uri, object);
+		Map<String, String> map = new Constants().getMap();
+		String appId = (String) ThreadLocalContainer.getObject("app_id");
+		String API_URL = map.get(appId + "_BASE_URL_API_URL");
+		return postOAuthedJson(API_URL + uri, object);
 	}
 
 	public static void main(String[] args) {
@@ -519,14 +521,10 @@ public class OBPRestClient {
 					+ convertTOGMT(date).getTime()
 					+ "\"";
 			HttpClient httpclient = new DefaultHttpClient();
-			HttpPost request = new HttpPost(BASE_URL_TOKEN + "/oauth/initiate");
+			HttpPost request = new HttpPost(LOGIN_URL + "/oauth/initiate");
 			request.setHeader("Content-Type",
 					"application/x-www-form-urlencoded");
 			request.setHeader("Authorization", authorization);
-			// consumer.sign(request);
-			// HttpEntity requestEntity = new
-			// ByteArrayEntity(object.getBytes("UTF-8"));
-			// request.setEntity(requestEntity);
 			org.apache.http.HttpResponse response = httpclient.execute(request);
 			HttpEntity entity = response.getEntity();
 

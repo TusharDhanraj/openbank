@@ -5,6 +5,7 @@ import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class TransactionResponse {
 	private Id id;
+
 	private String transaction_ids;
 	private String status;
 	private String start_date;
@@ -76,4 +77,24 @@ public class TransactionResponse {
 	public void setBody(Body body) {
 		this.body = body;
 	}
+
+	private String transactionId;
+	private String type;
+
+	public String getType() {
+		return type;
+	}
+
+	public void setType(String type) {
+		this.type = type;
+	}
+
+	public String getTransactionId() {
+		return transactionId;
+	}
+
+	public void setTransactionId(String transactionId) {
+		this.transactionId = transactionId;
+	}
+
 }
